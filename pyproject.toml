@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools", "wheel", "hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sss-bitcoin"
+description = "Use Shamir's Secret Sharing (SSS) to split your secret-keys, and to recreate original key from the shared keys."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT License"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+]
+dynamic = ["version"]
+
+[tool.setuptools.packages.find]
+where = ["sss"]
+
+# Configure Pytest for testing Python code
+[tool.pytest.ini_options]
+pythonpath = [
+    "."
+]
+minversion = "7.0"
+filterwarnings = [
+    "error",
+]
+addopts = """
+-ra -q -vv
+--doctest-modules
+--durations=50
+--html=test_reports/report.html
+--junitxml=test_reports/circleci/pytest/junit.xml
+--cov=sss
+--cov-branch
+--cov-report term
+--cov-report html:test_reports/coverage/pytest_cov.html
+--cov-report xml:test_reports/coverage/pytest_cov.xml
+"""
+testpaths = [
+    "tests",
+]
+junit_suite_name = "Pytest"
+junit_duration_report = "call"
+
+# Configure hatch for python builds
+[tool.hatch]
+version.source = "vcs"
+build.include = [
+    "sss/**",
+    "requirements/**",
+    "pyproject.toml",
+    "README.md"
+]
+build.exclude = [
+    ".github/**",
+    ".circleci/**",
+    "tests/**",
+    "docs/**",
+    ".gitignore",
+    ".pre-commit-config.yaml"
+]
