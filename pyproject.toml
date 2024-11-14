@@ -64,3 +64,13 @@ build.exclude = [
     ".gitignore",
     ".pre-commit-config.yaml"
 ]
+
+# Configure mypy for type-checking in Python code
+[tool.mypy]
+strict = true
+exclude = [
+    "tests/*",
+    "docs/*",
+    "sss/shamirs_secret_sharing.py",
+]
+follow_imports = "skip"

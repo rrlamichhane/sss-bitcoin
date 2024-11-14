@@ -12,35 +12,51 @@ def generate_secret(words):
     "words, total_shares, threshold",
     [
         pytest.param(
-            (["word_" + i for i in range(1, 13)], 5, 3),
+            ["word_" + str(i) for i in range(1, 13)],
+            5,
+            3,
             id="12 words, 5 shares, 3 threshold",
         ),
         pytest.param(
-            (["word_" + i for i in range(1, 13)], 6, 3),
+            ["word_" + str(i) for i in range(1, 13)],
+            6,
+            3,
             id="12 words, 6 shares, 3 threshold",
         ),
         pytest.param(
-            (["word_" + i for i in range(1, 25)], 12, 6),
+            ["word_" + str(i) for i in range(1, 25)],
+            12,
+            6,
             id="24 words, 12 shares, 6 threshold",
         ),
         pytest.param(
-            (["word_" + i for i in range(1, 25)], 12, 6),
+            ["word_" + str(i) for i in range(1, 25)],
+            12,
+            6,
             id="24 words, 6 shares, 3 threshold",
         ),
         pytest.param(
-            (["word_" + i for i in range(1, 9)], 4, 4),
+            ["word_" + str(i) for i in range(1, 9)],
+            4,
+            4,
             id="8 words, 4 shares, 4 threshold",
         ),
         pytest.param(
-            (["word_" + i for i in range(1, 9)], 4, 1),
+            ["word_" + str(i) for i in range(1, 9)],
+            4,
+            1,
             id="8 words, 4 shares, 1 threshold",
         ),
         pytest.param(
-            (["word_" + i for i in range(1, 9)], 8, 2),
+            ["word_" + str(i) for i in range(1, 9)],
+            8,
+            2,
             id="8 words, 8 shares, 2 threshold",
         ),
         pytest.param(
-            (["word_" + i for i in range(1, 4)], 3, 2),
+            ["word_" + str(i) for i in range(1, 4)],
+            3,
+            2,
             id="3 words, 3 shares, 2 threshold",
         ),
     ],
@@ -74,11 +90,11 @@ def test_split_and_combine(words, total_shares, threshold):
     "words, total_shares, threshold",
     [
         pytest.param(
-            (["corner_" + i for i in range(1, 4)], 5, 2),
+            (["corner_" + str(i) for i in range(1, 4)], 5, 2),
             id="Secret requires only 2 shares to reconstruct",
         ),
         pytest.param(
-            (["boundary_" + i for i in range(1, 11)], 7, 4),
+            (["boundary_" + str(i) for i in range(1, 11)], 7, 4),
             id="Secret with more shares than required for threshold",
         ),
     ],
@@ -109,10 +125,10 @@ def test_corner_cases(words, total_shares, threshold):
     "words",
     [
         pytest.param(
-            ["edge_case_" + i for i in range(1, 13)], id="12 words, high threshold"
+            ["edge_case_" + str(i) for i in range(1, 13)], id="12 words, high threshold"
         ),
         pytest.param(
-            ["edge_case_" + i for i in range(1, 25)], id="24 words, high threshold"
+            ["edge_case_" + str(i) for i in range(1, 25)], id="24 words, high threshold"
         ),
     ],
 )
