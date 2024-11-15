@@ -1,148 +1,145 @@
 import pytest
-import sss
+import subprocess
+from unittest.mock import patch, mock_open
+from io import StringIO
 
 
-# Utility function to generate a "secret" integer from a list of words (for testing)
-def generate_secret(words):
-    return int("".join(str(hash(word))[-4:] for word in words))
-
-
-# Test cases for `split_secret` function
 @pytest.mark.parametrize(
-    "words, total_shares, threshold",
+    "secret_content,threshold,num_shares",
+    [
+        pytest.param("HelloWorld", 2, 5, id="threshold2_numshares5_simple"),
+        pytest.param("PythonTesting123", 3, 5, id="threshold3_numshares5_alphanumeric"),
+        pytest.param(
+            "ThisIsASecretMessage", 3, 6, id="threshold3_numshares6_longer_text"
+        ),
+        pytest.param(
+            "🤫 Secrets with emoji!", 2, 3, id="threshold2_numshares3_with_emoji"
+        ),
+    ],
+)
+@patch("builtins.open", new_callable=mock_open)
+@patch(
+    "os.path.exists", side_effect=lambda path: True if "secret.txt" in path else False
+)
+@patch("os.makedirs")
+def test_split_and_combine(
+    mock_makedirs, mock_exists, mock_file, secret_content, threshold, num_shares
+):
+    # Step 1: Prepare secret in memory as the input_file "secret.txt"
+    # Set up the mock to return the secret content when reading "secret.txt"
+    mock_file.return_value.read.return_value = secret_content
+
+    # Run the split command
+    split_command = [
+        "python",
+        "sss/main.py",
+        "split",
+        "--input-file",
+        "secret.txt",
+        "--threshold",
+        str(threshold),
+        "--num-shares",
+        str(num_shares),
+        "--directory",
+        "shares",
+    ]
+
+    # Run the command
+    result_split = subprocess.run(
+        split_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+
+    # Check if the command was successful
+    assert result_split.returncode == 0, f"Splitting failed: {result_split.stderr}"
+
+    # Extract shares from the mocked file write calls for share files
+    share_files_content = {}
+    for call_args in mock_file.call_args_list:
+        if len(call_args[0]) > 0 and "share_" in call_args[0][0]:
+            filename = call_args[0][0]
+            # The content is written via mock_file().write(...)
+            handle = mock_file()
+            share_content = handle.write.call_args[0][0].strip()
+            share_files_content[filename] = share_content
+
+    assert (
+        len(share_files_content) == num_shares
+    ), f"Expected {num_shares} shares, got {len(share_files_content)}."
+
+    # Step 2: Combine shares using the first `threshold` shares
+    mock_file.reset_mock()  # Reset mock calls for combine operation
+
+    share_files_to_use = sorted(list(share_files_content.keys()))[:threshold]
+    combine_command = [
+        "python",
+        "sss/main.py",
+        "combine",
+        "-o",
+        "recovered_secret.txt",
+    ] + share_files_to_use
+
+    # Mock the content of share files to return share data
+    def side_effect_combine(path, *args, **kwargs):
+        if "share_" in path:
+            # Return the content of the share file
+            return StringIO(share_files_content[path])
+        else:
+            # For recovered_secret.txt
+            return mock_open()()
+
+    with patch("builtins.open", side_effect=side_effect_combine):
+        result_combine = subprocess.run(
+            combine_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+
+    # Check if the combine command was successful
+    assert result_combine.returncode == 0, f"Combining failed: {result_combine.stderr}"
+
+    # Extract recovered secret from what was written to recovered_secret.txt
+    handle = mock_file()
+    recovered_secret = handle.write.call_args[0][0] if handle.write.call_args else None
+    assert (
+        recovered_secret == secret_content
+    ), f"Recovered secret did not match original. Expected: {secret_content}, Got: {recovered_secret}"
+
+
+@pytest.mark.parametrize(
+    "threshold,num_shares,expected_error",
     [
         pytest.param(
-            ["word_" + str(i) for i in range(1, 13)],
-            5,
             3,
-            id="12 words, 5 shares, 3 threshold",
-        ),
-        pytest.param(
-            ["word_" + str(i) for i in range(1, 13)],
-            6,
-            3,
-            id="12 words, 6 shares, 3 threshold",
-        ),
-        pytest.param(
-            ["word_" + str(i) for i in range(1, 25)],
-            12,
-            6,
-            id="24 words, 12 shares, 6 threshold",
-        ),
-        pytest.param(
-            ["word_" + str(i) for i in range(1, 25)],
-            12,
-            6,
-            id="24 words, 6 shares, 3 threshold",
-        ),
-        pytest.param(
-            ["word_" + str(i) for i in range(1, 9)],
-            4,
-            4,
-            id="8 words, 4 shares, 4 threshold",
-        ),
-        pytest.param(
-            ["word_" + str(i) for i in range(1, 9)],
-            4,
-            1,
-            id="8 words, 4 shares, 1 threshold",
-        ),
-        pytest.param(
-            ["word_" + str(i) for i in range(1, 9)],
-            8,
             2,
-            id="8 words, 8 shares, 2 threshold",
-        ),
-        pytest.param(
-            ["word_" + str(i) for i in range(1, 4)],
-            3,
-            2,
-            id="3 words, 3 shares, 2 threshold",
-        ),
+            "Threshold must be < the total number of points.",
+            id="threshold_greater_than_shares",
+        )
     ],
 )
-def test_split_and_combine(words, total_shares, threshold):
-    # Generate the "secret" based on the words
-    secret = generate_secret(words)
-
-    # Split the secret into shares
-    shares = sss.make_random_shares(secret, threshold, total_shares)
-
-    # Check that the correct number of shares was created
-    assert len(shares) == total_shares
-
-    # Try to recover the secret with the minimum threshold of shares
-    recovered_secret = sss.recover_secret(shares[:threshold])
-    assert recovered_secret == secret
-
-    # Try to recover the secret with a different set of shares
-    recovered_secret_different_set = sss.recover_secret(shares[-threshold:])
-    assert recovered_secret_different_set == secret
-
-    # Edge case: Try with more than threshold shares to ensure they also reconstruct correctly
-    if total_shares > threshold:
-        recovered_secret_more_shares = sss.recover_secret(shares[: threshold + 1])
-        assert recovered_secret_more_shares == secret
-
-
-# Corner case testing for exact threshold requirement
-@pytest.mark.parametrize(
-    "words, total_shares, threshold",
-    [
-        pytest.param(
-            (["corner_" + str(i) for i in range(1, 4)], 5, 2),
-            id="Secret requires only 2 shares to reconstruct",
-        ),
-        pytest.param(
-            (["boundary_" + str(i) for i in range(1, 11)], 7, 4),
-            id="Secret with more shares than required for threshold",
-        ),
-    ],
+@patch("builtins.open", new_callable=mock_open, read_data="TestSecret")
+@patch(
+    "os.path.exists", side_effect=lambda path: True if "secret.txt" in path else False
 )
-def test_corner_cases(words, total_shares, threshold):
-    # Generate the secret from the given words
-    secret = generate_secret(words)
+@patch("os.makedirs")
+def test_error_conditions(
+    mock_makedirs, mock_exists, mock_file, threshold, num_shares, expected_error
+):
+    """Test error conditions for the split command."""
+    split_command = [
+        "python",
+        "sss/main.py",
+        "split",
+        "--input-file",
+        "secret.txt",
+        "--threshold",
+        str(threshold),
+        "--num-shares",
+        str(num_shares),
+    ]
 
-    # Generate shares
-    shares = sss.make_random_shares(secret, threshold, total_shares)
-
-    # Verify that exactly `threshold` shares can reconstruct the secret
-    recovered_secret = sss.recover_secret(shares[:threshold])
-    assert recovered_secret == secret
-
-    # Ensure all shares can reconstruct the secret as well
-    recovered_secret_all_shares = sss.recover_secret(shares)
-    assert recovered_secret_all_shares == secret
-
-    # Verify that using fewer than the threshold raises an error
-    if threshold > 1:
-        with pytest.raises(ValueError, match="need at least"):
-            sss.recover_secret(shares[: threshold - 1])
-
-
-# Edge case: Extremely high threshold (all shares required)
-@pytest.mark.parametrize(
-    "words",
-    [
-        pytest.param(
-            ["edge_case_" + str(i) for i in range(1, 13)], id="12 words, high threshold"
-        ),
-        pytest.param(
-            ["edge_case_" + str(i) for i in range(1, 25)], id="24 words, high threshold"
-        ),
-    ],
-)
-def test_high_threshold(words):
-    secret = generate_secret(words)
-    total_shares = len(words)
-    threshold = total_shares  # Require all shares
-
-    shares = sss.make_random_shares(secret, threshold, total_shares)
-
-    # Try to reconstruct with all shares (since threshold equals total shares)
-    recovered_secret = sss.recover_secret(shares)
-    assert recovered_secret == secret
-
-    # Try reconstructing with one fewer than total shares (should fail)
-    with pytest.raises(ValueError, match="need at least"):
-        sss.recover_secret(shares[:-1])
+    result = subprocess.run(
+        split_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    # Expect an error
+    assert result.returncode != 0, "Expected non-zero exit code for invalid parameters."
+    assert (
+        expected_error in result.stderr
+    ), f"Expected error message '{expected_error}' not found in stderr."

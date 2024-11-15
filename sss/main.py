@@ -1,99 +1,103 @@
 import argparse
-import os
-import shamirs_secret_sharing as sss
+from sss.shea256_secret_sharing.secretsharing import PlaintextToHexSecretSharer
 
 
-def split_secret(input_file, output_dir, total_shares=6, threshold=3):
-    # Read the secret from the input file
-    with open(input_file, "r") as f:
-        secret = int(f.read().strip())  # Expecting a numeric secret
-
-    # Generate the shares using sss.make_random_shares
-    shares = sss.make_random_shares(secret, threshold, total_shares)
-
-    # Ensure the output directory exists
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Save each share to a separate file
-    for i, share in enumerate(shares):
-        share_file = os.path.join(output_dir, f"share{i + 1}.txt")
-        with open(share_file, "w") as f:
-            f.write(f"{share[0]},{share[1]}\n")
-        print(f"Share {i + 1} saved to {share_file}")
-
-    print(
-        f"Successfully split the secret into {total_shares} shares with a threshold of {threshold}."
-    )
+def split_secret(secret, threshold, shares):
+    """Split the secret into shares using Shamir's Secret Sharing scheme."""
+    return PlaintextToHexSecretSharer.split_secret(secret, threshold, shares)
 
 
-def combine_shares(share_files):
-    # Load shares from provided files
-    shares = []
-    for file_path in share_files:
-        with open(file_path, "r") as f:
-            x, y = map(int, f.read().strip().split(","))
-            shares.append((x, y))
-
-    # Recover the secret using sss.recover_secret
-    secret = sss.recover_secret(shares)
-    print("Reconstructed Secret:", secret)
+def recover_secret(shares):
+    """Recover the secret from shares using Shamir's Secret Sharing scheme."""
+    return PlaintextToHexSecretSharer.recover_secret(shares)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Shamir's Secret Sharing Manager")
+    parser = argparse.ArgumentParser(
+        description="Split or recover a secret using Shamir's Secret Sharing scheme."
+    )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    # Mode selection: split or recover
+    parser.add_argument(
+        "mode",
+        choices=["split", "recover"],
+        help="Mode of operation: 'split' to create shares, 'recover' to reconstruct the secret from shares",
+    )
 
-    # Split command
-    split_parser = subparsers.add_parser("split", help="Split a secret into shares")
-    split_parser.add_argument(
-        "-i",
-        "--input-file",
+    # Arguments for split mode
+    parser.add_argument(
+        "-is",
+        "--input-secret",
         type=str,
-        required=True,
-        help="Path to the input file containing the secret (numeric)",
+        default="secret",
+        help="Path to input-file with secrets that needs to be shared.",
     )
-    split_parser.add_argument(
-        "-o",
-        "--output-dir",
-        type=str,
-        default="./shares",
-        help="Directory to save the generated shares (default: ./shares)",
-    )
-    split_parser.add_argument(
-        "-n",
-        "--total-shares",
-        type=int,
-        default=6,
-        help="Total number of shares to create (default: 6)",
-    )
-    split_parser.add_argument(
+    parser.add_argument(
         "-t",
         "--threshold",
         type=int,
-        default=3,
-        help="Minimum number of shares required to reconstruct the secret (default: 3)",
+        default=2,
+        help="The minimum number of shares needed to reconstruct the secret. Default is 2.",
+    )
+    parser.add_argument(
+        "-n",
+        "--num_shares",
+        type=int,
+        default=5,
+        help="The total number of shares to generate. Default is 5.",
+    )
+    parser.add_argument(
+        "-osh",
+        "--output-shards",
+        type=str,
+        default="shared_secrets",
+        help="Path (with filename suffix) to output file which will contain shares, will generate multiple numbered files. E.g. if 'shared_secret' is provided, then multiple 'shared_secret_\d+' will be generated.",
     )
 
-    # Combine command
-    combine_parser = subparsers.add_parser(
-        "combine", help="Combine shares to reconstruct the secret"
-    )
-    combine_parser.add_argument(
-        "share_files",
-        nargs="+",
+    # Arguments for recover mode
+    parser.add_argument(
+        "-ish",
+        "--input-shards",
         type=str,
-        help="Paths to share files to combine for reconstruction",
+        default="shared_secrets",
+        help="Path (with filename suffix) of input file containing shared-secrets. E.g. if 'shared_secret' is provided, then all 'shared_secret_\d+' would be consumed from that path.",
+    )
+    parser.add_argument(
+        "-os",
+        "--output-secret",
+        type=str,
+        default=None,
+        help="Path to output file containing the recovered secret.",
     )
 
     args = parser.parse_args()
 
-    if args.command == "split":
-        split_secret(
-            args.input_file, args.output_dir, args.total_shares, args.threshold
-        )
-    elif args.command == "combine":
-        combine_shares(args.share_files)
+    if args.mode == "split":
+        # Split mode
+        if args.input_secret is None:
+            print("Error: Secret must be provided in split mode.")
+            return
+        shares = split_secret(args.secret, args.threshold, args.num_shares)
+        print("Shares generated:")
+        for i, share in enumerate(shares, start=1):
+            print(f"Share {i}: {share}")
+
+    elif args.mode == "recover":
+        # Recover mode
+        if args.file is None:
+            print("Error: File containing shares must be provided in recover mode.")
+            return
+        # Read shares from file
+        try:
+            with open(args.file, "r") as f:
+                shares = [line.strip() for line in f if line.strip()]
+            if len(shares) < 2:
+                print("Error: At least 2 shares are required to recover the secret.")
+                return
+            secret = recover_secret(shares)
+            print(f"Recovered Secret: {secret}")
+        except FileNotFoundError:
+            print(f"Error: File '{args.file}' not found.")
 
 
 if __name__ == "__main__":
